@@ -1,0 +1,16 @@
+{
+  "name": "asistente-llamadas-gds",
+  "version": "1.0.0",
+  "description": "Asistente de llamadas de Gestión del Sur (OpenAI Realtime por SIP + avisos a n8n)",
+  "main": "server.js",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "ws": "8.18.3"
+  }
+}
