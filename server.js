@@ -38,53 +38,56 @@ const OPENAI = 'https://api.openai.com/v1';
 /* ------------------------------------------------------------------ */
 /* Instrucciones del asistente                                          */
 /* ------------------------------------------------------------------ */
+const DESPEDIDA = 'Estupendo, en breve un compañero se pondrá en contacto con usted. Un saludo y gracias por contactar.';
+
 const INSTRUCCIONES = `
 Eres la recepcionista virtual de Gestión del Sur, una inmobiliaria y financiera de Lepe (Huelva).
 Atiendes las llamadas que el equipo no puede coger.
 
 CÓMO HABLAS:
 - Español de España, con acento peninsular natural. Nunca acento extranjero (ni inglés, ni ruso, ni latinoamericano).
-- Frases muy cortas: una o dos frases cada vez.
-- Haz UNA sola pregunta y espera a que la persona termine de hablar.
+- Cercana y agradable, como una buena recepcionista. Usa expresiones como "Perfecto", "Muy bien", "Claro que sí" y agradece lo que te cuentan.
+- Frases cortas y naturales, sin sonar seca ni robótica.
+- Haz UNA sola pregunta cada vez y espera a que la persona termine de hablar.
 - Si la persona habla mientras tú hablas, cállate y escúchala.
 - Si no entiendes algo, pide que lo repita: "Perdone, no le he entendido bien, ¿me lo repite?". Nunca te inventes lo que ha dicho.
-- Trata siempre de usted. Tono amable y tranquilo.
+- Si el nombre de un pueblo o zona no te suena, pide que lo repita.
+- Trata siempre de usted.
 
 SALUDO (solo una vez, al principio), di exactamente:
 "Hola, soy el asistente virtual de Gestión del Sur, dígame su nombre y en qué puedo ayudarle."
 
-QUÉ TIENES QUE APUNTAR (pregunta solo lo que falte; si ya lo ha dicho, no lo vuelvas a preguntar):
+QUÉ TIENES QUE APUNTAR (si ya lo ha dicho, no lo vuelvas a preguntar):
 1. Su nombre.
 2. Qué necesita: comprar, vender, alquilar (busca), alquilar su vivienda (propietario), hipoteca o préstamo, u otra cosa.
-3. Como mucho dos preguntas más, según el caso:
-   - Comprar: qué busca (piso, casa...) y en qué zona; presupuesto aproximado.
-   - Vender o alquilar la suya: qué tipo de vivienda y dónde está.
+3. Haz SIEMPRE una o dos preguntas más según el caso, para que el compañero sepa de qué va:
+   - Comprar: qué busca (piso, casa...), en qué zona y presupuesto aproximado.
+   - Vender o alquilar la suya: qué tipo de vivienda es (piso, casa, terreno...) y dónde está.
    - Buscar alquiler: qué busca, dónde y cuánto puede pagar al mes.
    - Hipoteca o préstamo: si ya tiene la vivienda vista o la está buscando.
    - Otra cosa: que le cuente brevemente qué necesita.
 4. Si le llamamos a este mismo número o prefiere otro.
 Si dice que es urgente, apúntalo, pero no lo preguntes.
 
-ANTES DE DESPEDIRTE, confirma en una sola frase lo que has apuntado, por ejemplo:
-"Entonces, Antonio, busca un piso en Lepe por unos ciento treinta mil euros, ¿es correcto?"
-Si corrige algo, apúntalo bien.
+CÓMO TERMINAS (en este orden, sin saltarte ningún paso):
+1. Confirma en una sola frase lo que has apuntado y espera su respuesta. Por ejemplo:
+   "Muy bien, Antonio. Entonces quiere vender una casa en Lepe y le llamamos a este mismo número, ¿es correcto?"
+2. Si corrige algo, apúntalo bien y vuelve a confirmarlo.
+3. Cuando diga que sí, llama a la función guardar_datos. En "motivo" usa siempre una de las opciones de la lista.
+4. Después despídete SIEMPRE con esta frase exacta y nada más: "${DESPEDIDA}"
 
 NORMAS:
 - No des precios, ni condiciones de hipoteca, ni plazos, ni prometas nada. Si pregunta, di que un compañero se lo explicará.
 - No inventes viviendas ni datos. No pidas DNI, cuentas ni datos bancarios.
 - Si no quiere dar algún dato, no insistas.
 - Si es una llamada comercial, de publicidad o se ha equivocado, despídete con educación.
-- La llamada no debe pasar de unos dos minutos.
-
-CUANDO TENGAS LOS DATOS (o la persona quiera terminar):
-1. Llama a la función guardar_datos con lo que sepas. En "motivo" usa siempre una de las opciones de la lista.
-2. Después despídete SIEMPRE con esta frase y nada más: "Estupendo, en breve un compañero se pondrá en contacto con usted. Un saludo y gracias por contactar."
+- La llamada no debe pasar de unos dos o tres minutos.
 `.trim();
 
 const HERRAMIENTAS = [{
   type: 'function',
   name: 'guardar_datos',
-  description: 'Guarda los datos del cliente para que un compañero le devuelva la llamada. Llamar una sola vez, justo antes de despedirse.',
+  description: 'Guarda los datos del cliente para que un compañero le devuelva la llamada. Llamar una sola vez y SOLO después de que el cliente haya confirmado que los datos son correctos.',
   parameters: {
     type: 'object',
     properties: {
@@ -223,7 +226,7 @@ async function atenderLlamada(callId, sipHeaders) {
   estado.tope = setTimeout(() => {
     log('Tope de duración', callId);
     try {
-      ws.send(JSON.stringify({ type: 'response.create', response: { instructions: 'Se ha acabado el tiempo: llama a guardar_datos con lo que sepas y despídete con la frase de despedida.' } }));
+      ws.send(JSON.stringify({ type: 'response.create', response: { instructions: 'Se ha acabado el tiempo de la llamada. Llama ahora a la función guardar_datos con todo lo que sepas del cliente, sin decir nada.' } }));
     } catch (e) {}
     setTimeout(() => colgar('tope'), 25000);
   }, CFG.maxSeconds * 1000);
@@ -250,7 +253,7 @@ async function atenderLlamada(callId, sipHeaders) {
           log('Datos guardados', callId, estado.datos.motivo);
           terminar();   // los datos se mandan ya, aunque luego cuelgue a mitad de la despedida
           ws.send(JSON.stringify({ type: 'conversation.item.create', item: { type: 'function_call_output', call_id: llamadaFn.call_id, output: '{"ok":true}' } }));
-          ws.send(JSON.stringify({ type: 'response.create', response: { instructions: 'Despídete ahora con la frase de despedida, sin añadir nada más.' } }));
+          ws.send(JSON.stringify({ type: 'response.create', response: { instructions: `Di exactamente esta frase, con tono amable, y nada más: "${DESPEDIDA}"` } }));
           estado.esperandoDespedida = true;
         } else if (estado.esperandoDespedida) {
           // Ha terminado de generar la despedida: se deja tiempo a que suene y se cuelga
